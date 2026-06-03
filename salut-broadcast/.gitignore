@@ -1,0 +1,7 @@
+# JANGAN upload data pribadi & rahasia
+*.xlsx
+*.xls
+log_terkirim.csv
+*.token
+.env
+config_secret.json
