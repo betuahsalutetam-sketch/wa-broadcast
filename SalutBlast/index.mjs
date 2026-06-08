@@ -2,7 +2,7 @@
  * WA BLAST SALUT ETAM BETUAH - ESM Version
  * node index.mjs → scan QR → kirim otomatis
  */
-import makeWASocket, { DisconnectReason, useMultiFileAuthState } from '@whiskeysockets/baileys';
+import { makeWASocket, DisconnectReason, useMultiFileAuthState } from "@whiskeysockets/baileys";
 import { Boom } from '@hapi/boom';
 import qrcode from 'qrcode-terminal';
 import XLSX from 'xlsx';
