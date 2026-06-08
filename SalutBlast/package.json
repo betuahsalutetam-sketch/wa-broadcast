@@ -1,9 +1,10 @@
 {
   "name": "salut-wa-blast",
-  "version": "1.0.0",
-  "description": "WA Blast Salut Etam Betuah",
-  "main": "index.js",
-  "scripts": { "start": "node index.js" },
+  "version": "2.0.0",
+  "type": "module",
+  "description": "WA Blast Salut Etam Betuah - ESM",
+  "main": "index.mjs",
+  "scripts": { "start": "node index.mjs" },
   "dependencies": {
     "@whiskeysockets/baileys": "6.7.16",
     "@hapi/boom": "10.0.1",
