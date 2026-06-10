@@ -1,4 +1,8 @@
-import { makeWASocket, DisconnectReason, useMultiFileAuthState } from '@whiskeysockets/baileys';
+/**
+ * WA BLAST SALUT ETAM BETUAH v3
+ * Fix: browser fingerprint baru + batas retry + error 405 handling
+ */
+import { makeWASocket, DisconnectReason, useMultiFileAuthState, Browsers } from '@whiskeysockets/baileys';
 import { Boom } from '@hapi/boom';
 import qrcode from 'qrcode-terminal';
 import XLSX from 'xlsx';
@@ -15,6 +19,8 @@ const JEDA_MIN    = 30;
 const JEDA_MAX    = 60;
 const MAKS_HARI   = 50;
 const FILE_LOG    = 'log_terkirim.json';
+const AUTH_DIR    = 'auth_salut';
+const MAX_RETRY   = 3;
 
 function bacaLeads() {
     if (!fs.existsSync(FILE_EXCEL)) {
@@ -38,16 +44,21 @@ function bacaLeads() {
 }
 
 function bacaLog() {
-    try { return new Set(JSON.parse(fs.readFileSync(FILE_LOG, 'utf8'))); }
+    try { return new Set(JSON.parse(fs.readFileSync(FILE_LOG,'utf8'))); }
     catch { return new Set(); }
 }
 function simpanLog(s) { fs.writeFileSync(FILE_LOG, JSON.stringify([...s])); }
 const delay = s => new Promise(r => setTimeout(r, s * 1000));
 
-async function main() {
-    console.log('\n================================================');
-    console.log('  WA BLAST — SALUT ETAM BETUAH');
-    console.log('================================================\n');
+async function jalankan(retryKe = 0) {
+    if (retryKe >= MAX_RETRY) {
+        console.log('\n❌ Gagal terhubung setelah 3 percobaan.');
+        console.log('📋 Kemungkinan penyebab:');
+        console.log('   • Nomor masih terdaftar sebagai Business API');
+        console.log('   • Coba hapus folder auth_salut lalu jalankan ulang');
+        console.log('   • Atau gunakan nomor WA lain untuk scan QR');
+        process.exit(1);
+    }
 
     const leads    = bacaLeads();
     const terkirim = bacaLog();
@@ -55,48 +66,54 @@ async function main() {
     const batch    = sisa.slice(0, MAKS_HARI);
     const adaGambar = fs.existsSync(FILE_GAMBAR);
 
-    console.log(`Total leads   : ${leads.length}`);
-    console.log(`Sudah terkirim: ${terkirim.size}`);
-    console.log(`Hari ini kirim: ${batch.length}`);
-    console.log(`Flyer         : ${adaGambar ? 'Ada ✅' : 'Tidak ada'}\n`);
-
-    if (!batch.length) { console.log('Semua leads sudah terkirim!'); return; }
-
-    // Hapus auth lama jika ada masalah
-    const AUTH_DIR = 'auth_salut';
+    if (retryKe === 0) {
+        console.log('\n================================================');
+        console.log('  WA BLAST — SALUT ETAM BETUAH v3');
+        console.log('================================================');
+        console.log(`\nTotal leads   : ${leads.length}`);
+        console.log(`Sudah terkirim: ${terkirim.size}`);
+        console.log(`Hari ini kirim: ${batch.length}`);
+        console.log(`Flyer         : ${adaGambar ? 'Ada ✅' : 'Tidak ada'}\n`);
+        if (!batch.length) { console.log('🎉 Semua leads sudah terkirim!'); return; }
+    }
 
     const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
 
-    console.log('Menghubungkan ke WhatsApp...\n');
+    // Coba 3 variasi browser fingerprint berdasarkan nomor retry
+    const browserList = [
+        Browsers.macOS('Safari'),
+        Browsers.ubuntu('Chrome'),
+        ['Windows', 'Chrome', '120.0.0'],
+    ];
+    const browser = browserList[retryKe % browserList.length];
+    console.log(`\n🔄 Percobaan ${retryKe + 1}/${MAX_RETRY} - browser: ${browser[0]} ${browser[1]}`);
 
     const sock = makeWASocket({
         auth: state,
         logger: pino({ level: 'silent' }),
-        printQRInTerminal: true,  // Tampilkan QR langsung di terminal
-        browser: ['Salut Blast', 'Chrome', '1.0.0'],
-        connectTimeoutMs: 60000,
-        retryRequestDelayMs: 2000,
-        maxRetries: 3
+        printQRInTerminal: true,
+        browser,
+        connectTimeoutMs: 60_000,
+        keepAliveIntervalMs: 25_000,
+        retryRequestDelayMs: 3_000,
+        generateHighQualityLinkPreview: false,
     });
 
     sock.ev.on('creds.update', saveCreds);
-
-    let qrMuncul = false;
     let sudahKirim = false;
 
     sock.ev.on('connection.update', async ({ connection, lastDisconnect, qr }) => {
         if (qr) {
-            qrMuncul = true;
             console.log('\n================================================');
-            console.log('SCAN QR DI ATAS dengan WhatsApp 0877-8379-4377');
-            console.log('WA → titik 3 → Perangkat Tertaut → Tautkan → Scan');
+            console.log('  SCAN QR di atas dengan WhatsApp di HP Anda');
+            console.log('  WA → titik 3 → Perangkat Tertaut → Scan QR');
             console.log('================================================\n');
         }
 
         if (connection === 'open' && !sudahKirim) {
             sudahKirim = true;
-            console.log('\n✅ Terhubung! Mulai kirim...\n');
-            await delay(2);
+            console.log('\n✅ Terhubung! Mulai kirim pesan...\n');
+            await delay(3);
 
             let ok = 0, err = 0;
             for (let i = 0; i < batch.length; i++) {
@@ -109,49 +126,58 @@ async function main() {
                         await sock.sendMessage(jid, { text: pesan });
                     }
                     terkirim.add(raw); simpanLog(terkirim); ok++;
-                    console.log(`✅ [${i+1}/${batch.length}] ${raw}`);
+                    console.log(`  ✅ [${i+1}/${batch.length}] ${raw.slice(0,5)}***`);
                 } catch(e) {
                     err++;
-                    console.log(`❌ [${i+1}/${batch.length}] ${raw} — ${e.message}`);
+                    console.log(`  ❌ [${i+1}/${batch.length}] ${raw.slice(0,5)}*** — ${e.message}`);
                 }
                 if (i < batch.length - 1) {
-                    const j = JEDA_MIN + Math.floor(Math.random() * (JEDA_MAX - JEDA_MIN));
-                    console.log(`   Jeda ${j} detik...`);
+                    const j = JEDA_MIN + Math.floor(Math.random()*(JEDA_MAX-JEDA_MIN));
+                    console.log(`     ⏳ Jeda ${j} detik...`);
                     await delay(j);
                 }
             }
-
             console.log('\n================================================');
-            console.log(`SELESAI: ${ok} berhasil | ${err} gagal`);
+            console.log(`  SELESAI: ✅ ${ok} berhasil | ❌ ${err} gagal`);
             if (sisa.length > batch.length)
-                console.log(`Sisa ${sisa.length - batch.length} leads → jalankan lagi besok`);
+                console.log(`  📅 Sisa ${sisa.length-batch.length} leads → jalankan lagi besok`);
             console.log('================================================\n');
+            try { await sock.logout(); } catch(_) {}
             process.exit(0);
         }
 
         if (connection === 'close') {
-            const statusCode = lastDisconnect?.error instanceof Boom
+            const statusCode = (lastDisconnect?.error instanceof Boom)
                 ? lastDisconnect.error.output.statusCode : 500;
 
-            console.log(`Koneksi terputus (kode: ${statusCode})`);
-
             if (statusCode === DisconnectReason.loggedOut) {
-                console.log('Logout. Hapus folder auth_salut dan coba lagi.');
+                console.log('\n🔒 Logged out. Hapus folder auth_salut lalu coba lagi.');
                 process.exit(1);
             }
 
-            if (!sudahKirim && statusCode !== 428) {
-                console.log('Mencoba ulang dalam 5 detik...');
-                await delay(5);
-                // Bersihkan sock lama
+            if (statusCode === 405) {
+                console.log(`\n⚠️  Error 405 — mencoba browser fingerprint berbeda...`);
                 try { sock.end(); } catch(_) {}
-                main();
+                await delay(3);
+                jalankan(retryKe + 1);
+            } else if (!sudahKirim) {
+                console.log(`   Koneksi terputus (kode: ${statusCode}) — coba ulang...`);
+                try { sock.end(); } catch(_) {}
+                await delay(5);
+                jalankan(retryKe + 1);
             }
         }
     });
 }
 
-main().catch(e => {
-    console.error('\n❌ Error fatal:', e.message, '\n');
-    process.exit(1);
+// Hapus auth lama jika diminta
+if (process.argv.includes('--reset')) {
+    if (fs.existsSync(AUTH_DIR)) {
+        fs.rmSync(AUTH_DIR, { recursive: true });
+        console.log('🗑️ Auth lama dihapus. Memulai fresh...\n');
+    }
+}
+
+jalankan(0).catch(e => {
+    console.error('\n❌ Error fatal:', e.message); process.exit(1);
 });
