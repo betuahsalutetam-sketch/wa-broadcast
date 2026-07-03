@@ -1,8 +1,9 @@
 /**
- * WA BLAST SALUT ETAM BETUAH v3
- * Fix: browser fingerprint baru + batas retry + error 405 handling
+ * WA BLAST SALUT ETAM BETUAH v4
+ * Fix: pakai versi protokol WA terbaru (fetchLatestBaileysVersion) — ini penyebab
+ * utama Error 405 langsung gagal di 3 percobaan tanpa QR pernah muncul.
  */
-import { makeWASocket, DisconnectReason, useMultiFileAuthState, Browsers } from '@whiskeysockets/baileys';
+import { makeWASocket, DisconnectReason, useMultiFileAuthState, Browsers, fetchLatestBaileysVersion } from '@whiskeysockets/baileys';
 import { Boom } from '@hapi/boom';
 import qrcode from 'qrcode-terminal';
 import XLSX from 'xlsx';
@@ -88,7 +89,11 @@ async function jalankan(retryKe = 0) {
     const browser = browserList[retryKe % browserList.length];
     console.log(`\n🔄 Percobaan ${retryKe + 1}/${MAX_RETRY} - browser: ${browser[0]} ${browser[1]}`);
 
+    const { version, isLatest } = await fetchLatestBaileysVersion();
+    console.log(`   Versi WA protokol: ${version.join('.')} ${isLatest ? '(terbaru)' : '(bukan terbaru, tetap dipakai)'}`);
+
     const sock = makeWASocket({
+        version,
         auth: state,
         logger: pino({ level: 'silent' }),
         printQRInTerminal: true,
