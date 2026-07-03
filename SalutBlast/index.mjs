@@ -1,7 +1,6 @@
 /**
- * WA BLAST SALUT ETAM BETUAH v4
- * Fix: pakai versi protokol WA terbaru (fetchLatestBaileysVersion) — ini penyebab
- * utama Error 405 langsung gagal di 3 percobaan tanpa QR pernah muncul.
+ * WA BLAST SALUT ETAM BETUAH v5
+ * Fix: versi protokol WA terbaru (v4) + laporan_blast.csv per pesan + info nomor pengirim (v5)
  */
 import { makeWASocket, DisconnectReason, useMultiFileAuthState, Browsers, fetchLatestBaileysVersion } from '@whiskeysockets/baileys';
 import { Boom } from '@hapi/boom';
@@ -20,6 +19,7 @@ const JEDA_MIN    = 30;
 const JEDA_MAX    = 60;
 const MAKS_HARI   = 50;
 const FILE_LOG    = 'log_terkirim.json';
+const FILE_LAPORAN = 'laporan_blast.csv';
 const AUTH_DIR    = 'auth_salut';
 const MAX_RETRY   = 3;
 
@@ -38,8 +38,9 @@ function bacaLeads() {
         if (no.startsWith('0')) no = '62' + no.slice(1);
         else if (no.startsWith('8')) no = '62' + no;
         const pesan = row[1] ? String(row[1]) : '';
+        const nama  = row[2] ? String(row[2]) : '';
         if (no.length >= 10 && pesan)
-            leads.push({ jid: no + '@s.whatsapp.net', pesan, raw: no });
+            leads.push({ jid: no + '@s.whatsapp.net', pesan, raw: no, nama });
     }
     return leads;
 }
@@ -50,6 +51,18 @@ function bacaLog() {
 }
 function simpanLog(s) { fs.writeFileSync(FILE_LOG, JSON.stringify([...s])); }
 const delay = s => new Promise(r => setTimeout(r, s * 1000));
+
+function csvEscape(v) {
+    const s = String(v ?? '');
+    return /[",\n]/.test(s) ? `"${s.replace(/"/g,'""')}"` : s;
+}
+function tulisLaporan({ waktu, nomor, nama, status, keterangan }) {
+    if (!fs.existsSync(FILE_LAPORAN)) {
+        fs.writeFileSync(FILE_LAPORAN, 'waktu,nomor,nama,status,keterangan\n', 'utf8');
+    }
+    const baris = [waktu, nomor, nama, status, keterangan].map(csvEscape).join(',') + '\n';
+    fs.appendFileSync(FILE_LAPORAN, baris, 'utf8');
+}
 
 async function jalankan(retryKe = 0) {
     if (retryKe >= MAX_RETRY) {
@@ -117,12 +130,19 @@ async function jalankan(retryKe = 0) {
 
         if (connection === 'open' && !sudahKirim) {
             sudahKirim = true;
+            const nomorPengirim = sock.user?.id?.split(':')[0]?.split('@')[0] || '(tidak diketahui)';
+            const namaPengirim  = sock.user?.name || sock.user?.verifiedName || '';
+            console.log('\n================================================');
+            console.log(`  📱 Terkirim dari nomor: ${nomorPengirim} ${namaPengirim ? '('+namaPengirim+')' : ''}`);
+            console.log('================================================');
             console.log('\n✅ Terhubung! Mulai kirim pesan...\n');
+            console.log(`📄 Laporan detail per pesan: ${FILE_LAPORAN}\n`);
             await delay(3);
 
             let ok = 0, err = 0;
             for (let i = 0; i < batch.length; i++) {
-                const { jid, pesan, raw } = batch[i];
+                const { jid, pesan, raw, nama } = batch[i];
+                const waktu = new Date().toISOString();
                 try {
                     if (adaGambar) {
                         const img = fs.readFileSync(path.resolve(FILE_GAMBAR));
@@ -131,10 +151,12 @@ async function jalankan(retryKe = 0) {
                         await sock.sendMessage(jid, { text: pesan });
                     }
                     terkirim.add(raw); simpanLog(terkirim); ok++;
-                    console.log(`  ✅ [${i+1}/${batch.length}] ${raw.slice(0,5)}***`);
+                    tulisLaporan({ waktu, nomor: raw, nama, status: 'terkirim', keterangan: '' });
+                    console.log(`  ✅ [${i+1}/${batch.length}] ${raw} ${nama ? '- '+nama : ''}`);
                 } catch(e) {
                     err++;
-                    console.log(`  ❌ [${i+1}/${batch.length}] ${raw.slice(0,5)}*** — ${e.message}`);
+                    tulisLaporan({ waktu, nomor: raw, nama, status: 'gagal', keterangan: e.message });
+                    console.log(`  ❌ [${i+1}/${batch.length}] ${raw} ${nama ? '- '+nama : ''} — ${e.message}`);
                 }
                 if (i < batch.length - 1) {
                     const j = JEDA_MIN + Math.floor(Math.random()*(JEDA_MAX-JEDA_MIN));
@@ -144,6 +166,7 @@ async function jalankan(retryKe = 0) {
             }
             console.log('\n================================================');
             console.log(`  SELESAI: ✅ ${ok} berhasil | ❌ ${err} gagal`);
+            console.log(`  📄 Detail lengkap ada di: ${FILE_LAPORAN}`);
             if (sisa.length > batch.length)
                 console.log(`  📅 Sisa ${sisa.length-batch.length} leads → jalankan lagi besok`);
             console.log('================================================\n');
