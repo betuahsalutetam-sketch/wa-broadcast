@@ -1,6 +1,6 @@
 /**
- * WA BLAST SALUT ETAM BETUAH v5
- * Fix: versi protokol WA terbaru (v4) + laporan_blast.csv per pesan + info nomor pengirim (v5)
+ * WA BLAST SALUT ETAM BETUAH v6
+ * Update: kurangi risiko banned — jatah harian diturunkan, jeda diperpanjang.
  */
 import { makeWASocket, DisconnectReason, useMultiFileAuthState, Browsers, fetchLatestBaileysVersion } from '@whiskeysockets/baileys';
 import { Boom } from '@hapi/boom';
@@ -15,9 +15,9 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const FILE_EXCEL  = 'message.xlsx';
 const FILE_GAMBAR = 'flyer.png';
-const JEDA_MIN    = 30;
-const JEDA_MAX    = 60;
-const MAKS_HARI   = 50;
+const JEDA_MIN    = 120;   // 2 menit — dulu 30 detik
+const JEDA_MAX    = 300;   // 5 menit — dulu 60 detik
+const MAKS_HARI   = 15;    // dulu 50/hari
 const FILE_LOG    = 'log_terkirim.json';
 const FILE_LAPORAN = 'laporan_blast.csv';
 const AUTH_DIR    = 'auth_salut';
